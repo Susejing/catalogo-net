@@ -33,7 +33,6 @@ async function getCatalog() {
 }
 
 function formatItem(item) {
-  // Usamos el ID de TMDB (el número original) para que el addon de Nuvio lo reconozca
   const realId = item.id ? item.id.toString() : item.row.toString(); 
   return {
     id: realId,
@@ -83,9 +82,6 @@ export async function search(query) {
 
 export async function browse() { return { items: [], next: null }; }
 
-// Esta función permite que Kino muestre la opción de reproducir.
-// El addon de Nuvio, al estar instalado, se encargará de encontrar el enlace real.
 export async function resolve(ref) {
-  // Al devolver un error aquí, Kino buscará automáticamente en los otros plugins instalados
   throw new Error("La reproducción se gestiona con el addon de Nuvio.");
 }
