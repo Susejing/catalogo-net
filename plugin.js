@@ -33,7 +33,8 @@ async function getCatalog() {
 }
 
 function formatItem(item) {
-  const realId = item.row ? item.row.toString() : item.id.toString(); 
+  // Usamos el ID de TMDB (el número original) para que el addon de Nuvio lo reconozca
+  const realId = item.id ? item.id.toString() : item.row.toString(); 
   return {
     id: realId,
     title: item.name || "Sin título",
@@ -47,20 +48,20 @@ export async function home() {
   try {
     const catalog = await getCatalog();
     const rows = [];
-
     const movies = catalog.filter(i => i.kind === 'movie');
     const series = catalog.filter(i => i.kind === 'series');
 
+    // Fila de estado
     rows.push({
       id: "status",
-      title: `✅ Catálogo total cargado (${catalog.length} títulos)`,
+      title: `✅ Catálogo cargado (${catalog.length} títulos)`,
       items: movies.slice(0, 15).map(formatItem)
     });
 
     if (movies.length > 0) {
       rows.push({ id: "movies", title: "Películas Recientes", items: movies.slice(15, 45).map(formatItem) });
     }
-
+    
     if (series.length > 0) {
       rows.push({ id: "series", title: "Series Recientes", items: series.slice(0, 30).map(formatItem) });
     }
@@ -70,7 +71,7 @@ export async function home() {
     return [{
       id: "error",
       title: "❌ Error al cargar: " + error.message,
-      items: [{ id: "err", title: "Revisa tu conexión", poster: "", kind: "movie", ref: "movie:err" }]
+      items: []
     }];
   }
 }
@@ -83,7 +84,7 @@ export async function search(query) {
 
 export async function browse() { return { items: [], next: null }; }
 
+// Esta función queda bloqueada a propósito porque Nuvio se encargará del video
 export async function resolve(ref) {
-  // Como no tenemos los enlaces en el JSON, esto dará error.
-  throw new Error("Este título no tiene enlace de video. Falta extraer los streams.");
+  throw new Error("Este plugin solo es el catálogo. El video se resuelve con el addon de Nuvio.");
 }
