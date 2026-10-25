@@ -51,7 +51,6 @@ export async function home() {
     const movies = catalog.filter(i => i.kind === 'movie');
     const series = catalog.filter(i => i.kind === 'series');
 
-    // Fila de estado
     rows.push({
       id: "status",
       title: `✅ Catálogo cargado (${catalog.length} títulos)`,
@@ -84,7 +83,9 @@ export async function search(query) {
 
 export async function browse() { return { items: [], next: null }; }
 
-// Esta función queda bloqueada a propósito porque Nuvio se encargará del video
+// Esta función permite que Kino muestre la opción de reproducir.
+// El addon de Nuvio, al estar instalado, se encargará de encontrar el enlace real.
 export async function resolve(ref) {
-  throw new Error("Este plugin solo es el catálogo. El video se resuelve con el addon de Nuvio.");
+  // Al devolver un error aquí, Kino buscará automáticamente en los otros plugins instalados
+  throw new Error("La reproducción se gestiona con el addon de Nuvio.");
 }
