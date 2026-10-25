@@ -1,4 +1,4 @@
-// plugin.js - CATALOG//NET (Versión Optimizada)
+// plugin.js - CATALOG//NET (Versión Definitiva con Red de Seguridad)
 
 const BASE_URL = "https://raw.githubusercontent.com/Susejing/catalogo-net/main/";
 
@@ -16,13 +16,11 @@ async function getCatalog() {
   
   let catalogoCompleto = [];
   
-  // Cargamos uno por uno para no saturar la memoria de Kino
   for (const archivo of ARCHIVOS) {
     try {
       const res = await kino.fetch(BASE_URL + archivo);
       if (res.ok) {
         const parte = await res.json();
-        // Solo agregamos la parte si es un array válido
         if (Array.isArray(parte)) {
             catalogoCompleto = catalogoCompleto.concat(parte);
         }
@@ -30,6 +28,10 @@ async function getCatalog() {
     } catch (e) {
       kino.log("Error cargando " + archivo + ": " + e.message);
     }
+  }
+  
+  if (catalogoCompleto.length === 0) {
+      throw new Error("No se pudo descargar ningún archivo JSON.");
   }
   
   memoryCache = catalogoCompleto;
@@ -48,22 +50,32 @@ function formatItem(item) {
 }
 
 export async function home() {
-  const catalog = await getCatalog();
-  const rows = [];
+  try {
+    const catalog = await getCatalog();
+    const rows = [];
 
-  // Mostramos el conteo real
-  rows.push({
-    id: "status",
-    title: `✅ Catálogo cargado (${catalog.length} títulos)`,
-    items: catalog.slice(0, 15).map(formatItem)
-  });
+    // Fila de estado (Con conteo exacto)
+    rows.push({
+      id: "status",
+      title: `✅ Catálogo cargado (${catalog.length} títulos)`,
+      items: catalog.slice(0, 15).map(formatItem)
+    });
 
-  const movies = catalog.filter(i => i.kind === 'movie');
-  if (movies.length > 0) {
-    rows.push({ id: "movies", title: "Películas Recientes", items: movies.slice(15, 45).map(formatItem) });
+    const movies = catalog.filter(i => i.kind === 'movie');
+    if (movies.length > 0) {
+      rows.push({ id: "movies", title: "Películas Recientes", items: movies.slice(15, 45).map(formatItem) });
+    }
+
+    return rows;
+  } catch (error) {
+    kino.log("ERROR EN HOME:", error.message);
+    // Si falla, mostramos el error en pantalla
+    return [{
+      id: "error",
+      title: "❌ Error al cargar",
+      items: [{ id: "err", title: error.message, poster: "", kind: "movie", ref: "movie:err" }]
+    }];
   }
-
-  return rows;
 }
 
 export async function search(query) {
@@ -81,23 +93,18 @@ export async function resolve(ref) {
   
   if (!item) throw new Error("No se encontró la película.");
 
-  // DIAGNÓSTICO EXTREMO: Buscamos cualquier propiedad que parezca un enlace
+  // Diagnóstico de video
   let videoUrl = null;
-  
-  // 1. Buscamos en el formato que esperábamos (files)
   if (item.files && item.files.length > 0) {
      const validFile = item.files.find(f => f.plain || f.url);
      if (validFile) videoUrl = validFile.plain || validFile.url;
-  } 
-  // 2. Si no está, buscamos en otras propiedades comunes
-  else if (item.url) videoUrl = item.url;
-  else if (item.link) videoUrl = item.link;
-  else if (item.stream) videoUrl = item.stream;
+  } else if (item.url) {
+      videoUrl = item.url;
+  }
 
   if (!videoUrl) {
-    // Si no encuentra nada, le decimos al usuario qué propiedades SÍ tiene este título
     const props = Object.keys(item).join(", ");
-    throw new Error(`Este título no tiene video. Propiedades: ${props}`);
+    throw new Error(`No hay video. Propiedades del título: ${props}`);
   }
 
   return { url: videoUrl };
