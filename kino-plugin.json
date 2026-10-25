@@ -4,10 +4,15 @@
   "version": "1.0.0",
   "apiVersion": 8,
   "entry": "plugin.js",
-  "description": "Películas y series con secciones organizadas por idioma y género.",
+  "description": "Catálogo masivo de películas y series extraído de Movie Plus.",
   "author": "Susejing",
-  "homepage": "https://github.com/Susejing/kino-plugin-catalogo",
-  "hosts": ["victory-incl-elephant-diesel.trycloudflare.com"],
+  "homepage": "https://github.com/Susejing/catalogo-net",
+  "hosts": [
+    "raw.githubusercontent.com",
+    "*.yandex.net",
+    "*.yandex.ru",
+    "yadi.sk"
+  ],
   "capabilities": ["home", "search", "browse", "resolve"],
   "streamHosts": "any",
   "color": "#2C3E50",
