@@ -1,5 +1,36 @@
 const BASE_URL = "https://raw.githubusercontent.com/Susejing/catalogo-net/main/";
-const ARCHIVO_PRUEBA = "catalogo_completo.001.json"; // Solo cargaremos este para probar
+
+const ARCHIVOS = [
+  "catalogo_completo.001.json",
+  "catalogo_completo.002.json",
+  "catalogo_completo.003.json",
+  "catalogo_completo.004.json" 
+];
+
+let memoryCache = null;
+
+async function getCatalog() {
+  if (memoryCache) return memoryCache;
+  
+  let catalogoCompleto = [];
+  
+  for (const archivo of ARCHIVOS) {
+    try {
+      const res = await kino.fetch(BASE_URL + archivo);
+      if (res.ok) {
+        const parte = await res.json();
+        if (Array.isArray(parte)) {
+            catalogoCompleto = catalogoCompleto.concat(parte);
+        }
+      }
+    } catch (e) {
+      kino.log("Error cargando " + archivo + ": " + e.message);
+    }
+  }
+  
+  memoryCache = catalogoCompleto;
+  return memoryCache;
+}
 
 function formatItem(item) {
   const realId = item.row ? item.row.toString() : item.id.toString(); 
@@ -13,54 +44,46 @@ function formatItem(item) {
 }
 
 export async function home() {
-  const rows = [];
-
-  // FILA 1: PRUEBA FORZADA (Si esto no sale, el error está en kino-plugin.json)
-  rows.push({
-    id: "test-1",
-    title: "✅ PRUEBA: El plugin responde",
-    items: [{
-      id: "t1",
-      title: "Si ves esto, la app sí lee el código",
-      poster: "https://image.tmdb.org/t/p/w500/9EpOhoSZApJEojx3L3hwr3V3CWd.jpg",
-      kind: "movie",
-      ref: "movie:t1"
-    }]
-  });
-
-  // FILA 2: INTENTO DE CARGAR TU ARCHIVO 1
   try {
-    const res = await kino.fetch(BASE_URL + ARCHIVO_PRUEBA);
-    if (!res.ok) throw new Error("Error HTTP " + res.status);
-    
-    const data = await res.json();
-    if (!Array.isArray(data)) throw new Error("El archivo no es una lista válida");
+    const catalog = await getCatalog();
+    const rows = [];
+
+    const movies = catalog.filter(i => i.kind === 'movie');
+    const series = catalog.filter(i => i.kind === 'series');
 
     rows.push({
-      id: "parte-1",
-      title: `✅ Archivo 1 cargado (${data.length} títulos)`,
-      items: data.slice(0, 20).map(formatItem)
+      id: "status",
+      title: `✅ Catálogo total cargado (${catalog.length} títulos)`,
+      items: movies.slice(0, 15).map(formatItem)
     });
 
+    if (movies.length > 0) {
+      rows.push({ id: "movies", title: "Películas Recientes", items: movies.slice(15, 45).map(formatItem) });
+    }
+
+    if (series.length > 0) {
+      rows.push({ id: "series", title: "Series Recientes", items: series.slice(0, 30).map(formatItem) });
+    }
+
+    return rows;
   } catch (error) {
-    rows.push({
-      id: "error-1",
-      title: "❌ Error al cargar el archivo",
-      items: [{
-        id: "err1", title: error.message, poster: "", kind: "movie", ref: "movie:err1"
-      }]
-    });
+    return [{
+      id: "error",
+      title: "❌ Error al cargar: " + error.message,
+      items: [{ id: "err", title: "Revisa tu conexión", poster: "", kind: "movie", ref: "movie:err" }]
+    }];
   }
-
-  return rows;
 }
 
 export async function search(query) {
-  return []; // Desactivado por ahora para no saturar
+  const catalog = await getCatalog();
+  const q = query.q.toLowerCase();
+  return catalog.filter(item => item.name && item.name.toLowerCase().includes(q)).slice(0, 50).map(formatItem);
 }
 
 export async function browse() { return { items: [], next: null }; }
 
 export async function resolve(ref) {
-  throw new Error("No hay enlaces de video en los datos extraídos.");
+  // Como no tenemos los enlaces en el JSON, esto dará error.
+  throw new Error("Este título no tiene enlace de video. Falta extraer los streams.");
 }
