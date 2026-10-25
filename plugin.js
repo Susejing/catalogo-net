@@ -1,12 +1,10 @@
-// plugin.js - CATALOG//NET (Offline Edition)
+// plugin.js - CATALOG//NET (Offline Edition Completa)
 
-// URL de tu archivo JSON subido a GitHub. 
-// ¡Asegúrate de que el nombre de tu rama sea "main" o "master"!
 const DATA_URL = "https://raw.githubusercontent.com/Susejing/catalogo-net/main/catalogo_completo.json";
 
-// Variables para guardar en caché y no descargar el JSON cada vez
 let memoryCache = null;
 
+// Descarga el catálogo y lo guarda en caché
 async function getCatalog() {
   if (memoryCache) return memoryCache;
   
@@ -17,11 +15,11 @@ async function getCatalog() {
   return memoryCache;
 }
 
-// Función auxiliar para formatear los ítems como le gustan a Kino
+// Formatea cada título para que Kino lo entienda
 function formatItem(item) {
   return {
-    id: item.id.toString(),
-    title: item.name,
+    id: item.id ? item.id.toString() : Math.random().toString(),
+    title: item.name || "Sin título",
     poster: item.image_path ? `https://image.tmdb.org/t/p/w500${item.image_path}` : "",
     kind: item.kind || "movie",
     ref: `${item.kind || "movie"}:${item.id}`
@@ -30,49 +28,82 @@ function formatItem(item) {
 
 // --- Función de Inicio (8 Secciones) ---
 export async function home() {
-  const catalog = await getCatalog();
-  const rows = [];
+  try {
+    const catalog = await getCatalog();
+    
+    // Si el JSON está vacío, devolvemos una fila vacía
+    if (!catalog || catalog.length === 0) return [];
 
-  // Filtramos el catálogo por tipo
-  const movies = catalog.filter(i => i.kind === 'movie');
-  const series = catalog.filter(i => i.kind === 'series');
+    const rows = [];
+    const movies = catalog.filter(i => i.kind === 'movie');
+    const series = catalog.filter(i => i.kind === 'series');
 
-  // 1-2: Secciones de Animes
-  const animesSub = series.filter(i => i.lang === 'ja' || i.genres?.includes('anime'));
-  const animesLat = series.filter(i => i.lang === 'es' || i.genres?.includes('anime'));
+    // 1. Series Recientes
+    if (series.length > 0) {
+      rows.push({ 
+        id: "series-recientes", 
+        title: "Series Recientes", 
+        items: series.reverse().slice(0, 20).map(formatItem) 
+      });
+    }
 
-  // 3-4: Películas
-  const moviesSub = movies.filter(i => i.lang === 'ja' || i.genres?.includes('anime'));
-  const moviesLat = movies.filter(i => i.lang === 'es' || i.genres?.includes('anime'));
+    // 2. Películas Recientes
+    if (movies.length > 0) {
+      rows.push({ 
+        id: "peliculas-recientes", 
+        title: "Películas Recientes", 
+        items: movies.reverse().slice(0, 20).map(formatItem) 
+      });
+    }
 
-  // Armamos las filas
-  if (animesSub.length > 0) rows.push({ title: "Animes Subtitulados", items: animesSub.slice(0, 20).map(formatItem) });
-  if (animesLat.length > 0) rows.push({ title: "Animes Latino", items: animesLat.slice(0, 20).map(formatItem) });
-  if (moviesSub.length > 0) rows.push({ title: "Películas Subtituladas", items: moviesSub.slice(0, 20).map(formatItem) });
-  if (moviesLat.length > 0) rows.push({ title: "Películas Latino", items: moviesLat.slice(0, 20).map(formatItem) });
+    // 3. Animes Subtitulados / Latino (Buscando en géneros)
+    const animes = series.filter(i => i.genres?.includes('anime') || i.genres?.includes('animación'));
+    if (animes.length > 0) {
+      rows.push({ 
+        id: "animes", 
+        title: "Animes", 
+        items: animes.slice(0, 20).map(formatItem) 
+      });
+    }
 
-  // 5-6: Recientes
-  rows.push({ title: "Series Recientes", items: series.reverse().slice(0, 20).map(formatItem) });
-  rows.push({ title: "Películas Recientes", items: movies.reverse().slice(0, 20).map(formatItem) });
+    // 4. Películas de Animación
+    const animMovies = movies.filter(i => i.genres?.includes('animación') || i.genres?.includes('anime'));
+    if (animMovies.length > 0) {
+      rows.push({ 
+        id: "peliculas-animadas", 
+        title: "Películas Animadas", 
+        items: animMovies.slice(0, 20).map(formatItem) 
+      });
+    }
 
-  // 7: Destacadas
-  const randomMovies = [...movies].sort(() => 0.5 - Math.random());
-  rows.push({ title: "Descubre algo nuevo", items: randomMovies.slice(0, 20).map(formatItem) });
+    // 5. Destacadas (Aleatorias)
+    const randomMovies = [...movies].sort(() => 0.5 - Math.random());
+    rows.push({ 
+      id: "destacadas", 
+      title: "Descubre algo nuevo", 
+      items: randomMovies.slice(0, 20).map(formatItem) 
+    });
 
-  // 8: Fila de Géneros
-  const genres = ["Acción", "Comedia", "Drama", "Fantasía", "Terror", "Romance", "Ciencia Ficción", "Suspenso"];
-  rows.push({
-    title: "Explorar por Género",
-    items: genres.map(g => ({
-      id: `genre:${g}`,
-      title: g,
-      kind: "series",
-      ref: `genre:${g}`,
-      poster: ""
-    }))
-  });
+    // 6. Fila de Géneros
+    const genres = ["Acción", "Comedia", "Drama", "Fantasía", "Terror", "Romance", "Ciencia Ficción", "Suspenso"];
+    rows.push({
+      id: "explorar-generos",
+      title: "Explorar por Género",
+      items: genres.map(g => ({
+        id: `genre:${g}`,
+        title: g,
+        kind: "series",
+        ref: `genre:${g}`,
+        poster: ""
+      }))
+    });
 
-  return rows;
+    return rows;
+
+  } catch (error) {
+    kino.log("Error cargando el catálogo:", error);
+    throw new Error("No se pudo cargar el catálogo. Intenta de nuevo.");
+  }
 }
 
 // --- Función de Búsqueda ---
@@ -106,7 +137,9 @@ export async function browse(ref, cursor) {
 
 // --- Función de Resolución (Reproducción) ---
 export async function resolve(ref) {
-  const [kind, id] = ref.split(':');
+  const parts = ref.split(':');
+  const id = parts[1];
+  
   const catalog = await getCatalog();
   
   const item = catalog.find(i => i.id.toString() === id);
@@ -115,7 +148,7 @@ export async function resolve(ref) {
     throw new Error("No se encontraron enlaces de video para este título.");
   }
 
-  // Buscamos el primer enlace directo válido
+  // Buscamos el enlace válido de Yandex
   const validFile = item.files.find(f => f.plain);
   
   if (!validFile) {
