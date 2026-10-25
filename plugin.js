@@ -1,42 +1,5 @@
-// plugin.js - CATALOG//NET (Versión Definitiva con Red de Seguridad)
-
 const BASE_URL = "https://raw.githubusercontent.com/Susejing/catalogo-net/main/";
-
-const ARCHIVOS = [
-  "catalogo_completo.001.json",
-  "catalogo_completo.002.json",
-  "catalogo_completo.003.json",
-  "catalogo_completo.004.json" 
-];
-
-let memoryCache = null;
-
-async function getCatalog() {
-  if (memoryCache) return memoryCache;
-  
-  let catalogoCompleto = [];
-  
-  for (const archivo of ARCHIVOS) {
-    try {
-      const res = await kino.fetch(BASE_URL + archivo);
-      if (res.ok) {
-        const parte = await res.json();
-        if (Array.isArray(parte)) {
-            catalogoCompleto = catalogoCompleto.concat(parte);
-        }
-      }
-    } catch (e) {
-      kino.log("Error cargando " + archivo + ": " + e.message);
-    }
-  }
-  
-  if (catalogoCompleto.length === 0) {
-      throw new Error("No se pudo descargar ningún archivo JSON.");
-  }
-  
-  memoryCache = catalogoCompleto;
-  return memoryCache;
-}
+const ARCHIVO_PRUEBA = "catalogo_completo.001.json"; // Solo cargaremos este para probar
 
 function formatItem(item) {
   const realId = item.row ? item.row.toString() : item.id.toString(); 
@@ -50,62 +13,54 @@ function formatItem(item) {
 }
 
 export async function home() {
-  try {
-    const catalog = await getCatalog();
-    const rows = [];
+  const rows = [];
 
-    // Fila de estado (Con conteo exacto)
+  // FILA 1: PRUEBA FORZADA (Si esto no sale, el error está en kino-plugin.json)
+  rows.push({
+    id: "test-1",
+    title: "✅ PRUEBA: El plugin responde",
+    items: [{
+      id: "t1",
+      title: "Si ves esto, la app sí lee el código",
+      poster: "https://image.tmdb.org/t/p/w500/9EpOhoSZApJEojx3L3hwr3V3CWd.jpg",
+      kind: "movie",
+      ref: "movie:t1"
+    }]
+  });
+
+  // FILA 2: INTENTO DE CARGAR TU ARCHIVO 1
+  try {
+    const res = await kino.fetch(BASE_URL + ARCHIVO_PRUEBA);
+    if (!res.ok) throw new Error("Error HTTP " + res.status);
+    
+    const data = await res.json();
+    if (!Array.isArray(data)) throw new Error("El archivo no es una lista válida");
+
     rows.push({
-      id: "status",
-      title: `✅ Catálogo cargado (${catalog.length} títulos)`,
-      items: catalog.slice(0, 15).map(formatItem)
+      id: "parte-1",
+      title: `✅ Archivo 1 cargado (${data.length} títulos)`,
+      items: data.slice(0, 20).map(formatItem)
     });
 
-    const movies = catalog.filter(i => i.kind === 'movie');
-    if (movies.length > 0) {
-      rows.push({ id: "movies", title: "Películas Recientes", items: movies.slice(15, 45).map(formatItem) });
-    }
-
-    return rows;
   } catch (error) {
-    kino.log("ERROR EN HOME:", error.message);
-    // Si falla, mostramos el error en pantalla
-    return [{
-      id: "error",
-      title: "❌ Error al cargar",
-      items: [{ id: "err", title: error.message, poster: "", kind: "movie", ref: "movie:err" }]
-    }];
+    rows.push({
+      id: "error-1",
+      title: "❌ Error al cargar el archivo",
+      items: [{
+        id: "err1", title: error.message, poster: "", kind: "movie", ref: "movie:err1"
+      }]
+    });
   }
+
+  return rows;
 }
 
 export async function search(query) {
-  const catalog = await getCatalog();
-  const q = query.q.toLowerCase();
-  return catalog.filter(item => item.name && item.name.toLowerCase().includes(q)).slice(0, 50).map(formatItem);
+  return []; // Desactivado por ahora para no saturar
 }
 
 export async function browse() { return { items: [], next: null }; }
 
 export async function resolve(ref) {
-  const id = ref.split(':')[1]; 
-  const catalog = await getCatalog();
-  const item = catalog.find(i => (i.row && i.row.toString() === id) || (i.id && i.id.toString() === id));
-  
-  if (!item) throw new Error("No se encontró la película.");
-
-  // Diagnóstico de video
-  let videoUrl = null;
-  if (item.files && item.files.length > 0) {
-     const validFile = item.files.find(f => f.plain || f.url);
-     if (validFile) videoUrl = validFile.plain || validFile.url;
-  } else if (item.url) {
-      videoUrl = item.url;
-  }
-
-  if (!videoUrl) {
-    const props = Object.keys(item).join(", ");
-    throw new Error(`No hay video. Propiedades del título: ${props}`);
-  }
-
-  return { url: videoUrl };
+  throw new Error("No hay enlaces de video en los datos extraídos.");
 }
