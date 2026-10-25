@@ -1,7 +1,7 @@
 {
   "id": "catalogo-net",
   "name": "CATALOG//NET",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "apiVersion": 8,
   "entry": "plugin.js",
   "description": "Catálogo masivo de películas y series. La reproducción se realiza con el addon de Nuvio.",
@@ -15,7 +15,6 @@
     "yadi.sk"
   ],
   "capabilities": ["home", "search", "browse", "resolve"],
-  "catalogOnly": true,
   "streamHosts": "any",
   "color": "#2C3E50",
   "icon": "icon.png"
