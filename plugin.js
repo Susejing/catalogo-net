@@ -1,5 +1,3 @@
-// plugin.js - CATALOG//NET (Versión Final Definitiva)
-
 const DATA_URL = "https://raw.githubusercontent.com/Susejing/catalogo-net/main/catalogo_completo.json";
 
 let memoryCache = null;
@@ -7,28 +5,26 @@ let memoryCache = null;
 async function getCatalog() {
   if (memoryCache) return memoryCache;
   
+  // Forzamos a Kino a descargar los datos
   const res = await kino.fetch(DATA_URL);
-  if (!res.ok) throw new Error("Error al descargar de GitHub: " + res.status);
+  if (!res.ok) throw new Error("Error HTTP al descargar: " + res.status);
   
-  memoryCache = await res.json();
+  const data = await res.json();
+  
+  // Verificamos si el JSON es un array o si viene envuelto en un objeto
+  if (Array.isArray(data)) {
+    memoryCache = data;
+  } else if (data && data.items) {
+    memoryCache = data.items; // Por si el extractor lo guardó como { "items": [...] }
+  } else {
+    throw new Error("El archivo descargado no es una lista válida.");
+  }
+  
   return memoryCache;
 }
 
-// Función segura para leer los géneros (ya sean textos o arrays)
-function getSafeGenres(genresData) {
-  if (!genresData) return "";
-  if (Array.isArray(genresData)) return genresData.join(" ");
-  if (typeof genresData === 'string') {
-    // Limpiamos los corchetes si vienen como "[3,7,14]"
-    return genresData.replace(/[\[\]"]/g, ''); 
-  }
-  return "";
-}
-
 function formatItem(item) {
-  // Usamos 'row' para el ID porque es el que usa el servidor de videos.
   const realId = item.row ? item.row.toString() : item.id.toString(); 
-  
   return {
     id: realId,
     title: item.name || "Sin título",
@@ -38,130 +34,63 @@ function formatItem(item) {
   };
 }
 
-// --- Función de Inicio (Catálogo) ---
 export async function home() {
-  try {
-    const catalog = await getCatalog();
-    if (!catalog || catalog.length === 0) return [];
+  const rows = [];
 
-    const rows = [];
-
-    // Separamos películas y series
-    const movies = catalog.filter(i => i.kind === 'movie');
-    const series = catalog.filter(i => i.kind === 'series');
-
-    // 1. Películas Recientes (Las primeras 30 del JSON)
-    if (movies.length > 0) {
-      rows.push({ 
-        id: "movies-new", 
-        title: "Películas Recientes", 
-        items: movies.slice(0, 30).map(formatItem) 
-      });
-    }
-
-    // 2. Series Recientes (Las primeras 30 del JSON)
-    if (series.length > 0) {
-      rows.push({ 
-        id: "series-new", 
-        title: "Series Recientes", 
-        items: series.slice(0, 30).map(formatItem) 
-      });
-    }
-
-    // 3. Películas Animadas / Anime
-    const animes = movies.filter(i => {
-      const g = getSafeGenres(i.genres).toLowerCase();
-      return g.includes('animación') || g.includes('anime') || g.includes('animacion');
-    });
-    if (animes.length > 0) {
-      rows.push({ 
-        id: "animes-movies", 
-        title: "Anime y Animación", 
-        items: animes.slice(0, 30).map(formatItem) 
-      });
-    }
-
-    // 4. Fila de Géneros (Búsqueda)
-    const genres = ["acción", "comedia", "drama", "terror", "romance", "ciencia ficción", "suspenso", "aventura"];
-    rows.push({
-      id: "genres",
-      title: "Explorar por Género",
-      items: genres.map(g => ({
-        id: `genre:${g}`,
-        title: g.toUpperCase(),
-        kind: "movie",
-        ref: `genre:${g}`,
-        poster: ""
-      }))
-    });
-
-    return rows;
-
-  } catch (error) {
-    kino.log("Error cargando catálogo:", error.message);
-    // Si falla, mostramos una fila con el error para que no salga vacío
-    return [{
-      id: "error-row",
-      title: "Error al cargar. Revisa tu conexión",
-      items: []
-    }];
-  }
-}
-
-// --- Función de Búsqueda ---
-export async function search(query) {
-  const catalog = await getCatalog();
-  const q = query.q.toLowerCase();
-  
-  const results = catalog.filter(item => 
-    item.name && item.name.toLowerCase().includes(q)
-  );
-
-  return results.slice(0, 50).map(formatItem);
-}
-
-// --- Función de Navegación por Género ---
-export async function browse(ref, cursor) {
-  if (!ref.startsWith('genre:')) return { items: [], next: null };
-  
-  const genre = ref.split(':')[1].toLowerCase();
-  const catalog = await getCatalog();
-  
-  // Usamos la función segura para no crashear
-  const results = catalog.filter(item => {
-    const itemGenres = getSafeGenres(item.genres).toLowerCase();
-    return itemGenres.includes(genre);
+  // 1. FILA DE PRUEBA (Si ves esto, la app sí está cargando el plugin)
+  rows.push({
+    id: "prueba-visual",
+    title: "Diagnóstico Visual",
+    items: [{
+      id: "test-1",
+      title: "✅ Si ves esto, el plugin SÍ responde",
+      poster: "https://image.tmdb.org/t/p/w500/9EpOhoSZApJEojx3L3hwr3V3CWd.jpg",
+      kind: "movie",
+      ref: "movie:test-1"
+    }]
   });
 
-  return {
-    items: results.slice(0, 50).map(formatItem),
-    next: null
-  };
+  try {
+    // 2. INTENTO DE CARGAR TU CATÁLOGO
+    const catalog = await getCatalog();
+    
+    if (!catalog || catalog.length === 0) {
+      throw new Error("El catálogo se descargó pero está VACÍO (0 títulos).");
+    }
+
+    // Filtramos películas
+    const movies = catalog.filter(i => i.kind === 'movie');
+    
+    if (movies.length === 0) {
+      throw new Error("Se descargaron " + catalog.length + " títulos, pero NINGUNO tiene kind='movie'.");
+    }
+
+    // Si todo sale bien, mostramos las películas
+    rows.push({ 
+      id: "movies-new", 
+      title: "Películas Recientes (Éxito)", 
+      items: movies.slice(0, 20).map(formatItem) 
+    });
+
+  } catch (error) {
+    // 3. SI HAY UN ERROR, LO MOSTRAMOS EN PANTALLA
+    rows.push({
+      id: "error-fila",
+      title: "❌ ERROR DETECTADO ❌",
+      items: [{
+        id: "error-id",
+        title: error.message, // Aquí saldrá la razón exacta
+        poster: "",
+        kind: "movie",
+        ref: "movie:error"
+      }]
+    });
+  }
+
+  return rows;
 }
 
-// --- Función de Resolución (Reproducción) ---
-export async function resolve(ref) {
-  const parts = ref.split(':');
-  const id = parts[1]; 
-  
-  const catalog = await getCatalog();
-  // Buscamos usando el campo "row"
-  const item = catalog.find(i => (i.row && i.row.toString() === id) || (i.id && i.id.toString() === id));
-  
-  if (!item) {
-    throw new Error("No se encontró la película en el catálogo.");
-  }
-
-  // Buscamos el enlace del video
-  if (!item.files || item.files.length === 0) {
-    throw new Error("No hay enlaces de video disponibles para este título.");
-  }
-
-  const validFile = item.files.find(f => f.plain);
-  
-  if (!validFile) {
-    throw new Error("El enlace está cifrado o no disponible.");
-  }
-
-  return { url: validFile.plain };
-}
+// Funciones básicas para que Kino no marque error
+export async function search(query) { return []; }
+export async function browse() { return { items: [], next: null }; }
+export async function resolve() { throw new Error("No video"); }
