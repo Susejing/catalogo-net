@@ -1,7 +1,6 @@
 const BASE_URL = "https://raw.githubusercontent.com/Susejing/catalogo-net/main/";
 const ADDON_BASE_URL = "https://victory-incl-elephant-diesel.trycloudflare.com";
 const YANDEX_API = "https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key=";
-const TMDB_API_KEY = "TU_API_KEY_AQUI"; // <-- REEMPLAZA ESTO
 
 const ARCHIVOS = ["ligero.001.json", "ligero.002.json", "ligero.003.json", "ligero.004.json", "ligero.005.json"];
 
@@ -35,24 +34,18 @@ function formatItem(item) {
 }
 
 function filterCatalog(catalog, filterType) {
-  // 🌟 FILTRO DE ANIME MEJORADO: Usamos el idioma original (Japonés = ja)
-  // Si el idioma no está en el catálogo, usamos el género como respaldo.
-  const isAnime = i => {
-    if (i.original_language === 'ja') return true;
-    const g = (i.genres || "").toLowerCase();
-    return g.includes('anime');
-  };
-  
+  // Filtros más seguros que no rompen las secciones
+  const isAnim = i => (i.genres || "").toLowerCase().includes('animación') || (i.genres || "").toLowerCase().includes('anime');
   const isSub = i => (i.resolutions || "").toUpperCase().includes('SUB') || (i.resolutions || "").toUpperCase().includes('JPN');
   const isLat = i => (i.resolutions || "").toUpperCase().includes('LAT') || (i.resolutions || "").toUpperCase().includes('DUAL');
 
   switch(filterType) {
-    case "anime_sub": return catalog.filter(i => isAnime(i) && isSub(i));
-    case "anime_lat": return catalog.filter(i => isAnime(i) && isLat(i));
-    case "latino": return catalog.filter(i => isLat(i) && !isAnime(i));
-    case "subtitulado": return catalog.filter(i => isSub(i) && !isAnime(i));
-    case "movies": return catalog.filter(i => i.kind === 'movie' && !isAnime(i));
-    case "series": return catalog.filter(i => i.kind === 'series' && !isAnime(i));
+    case "anime_sub": return catalog.filter(i => isAnim(i) && isSub(i));
+    case "anime_lat": return catalog.filter(i => isAnim(i) && isLat(i));
+    case "latino": return catalog.filter(i => isLat(i)); // Quitamos el !isAnim para que no se vacíe
+    case "subtitulado": return catalog.filter(i => isSub(i)); // Quitamos el !isAnim
+    case "movies": return catalog.filter(i => i.kind === 'movie');
+    case "series": return catalog.filter(i => i.kind === 'series');
     default: return catalog;
   }
 }
@@ -104,22 +97,26 @@ export async function search(query) {
   return catalog.filter(item => item.name && item.name.toLowerCase().includes(q)).slice(0, 50).map(formatItem);
 }
 
-// --- 📝 NUEVA FUNCIÓN PARA LA SINOPSIS ---
+// --- 📝 SINOPSIS USANDO LOS AJUSTES ---
 export async function details(ref) {
+  // Obtenemos la API Key desde los ajustes de Kino
+  const apiKey = kino.settings.get("tmdb_api_key");
+  
+  if (!apiKey) {
+    return { overview: "⚠️ Configura tu API Key de TMDB en los ajustes del plugin para ver la sinopsis." };
+  }
+
   const parts = ref.split(':');
-  const type = parts[0]; // "movie" o "series"
+  const type = parts[0]; 
   const id = parts[1];
 
   try {
-    const url = `https://api.themoviedb.org/3/${type}/${id}?api_key=${TMDB_API_KEY}&language=es-ES`;
+    const url = `https://api.themoviedb.org/3/${type}/${id}?api_key=${apiKey}&language=es-ES`;
     const res = await kino.fetch(url);
-    if (!res.ok) return {}; // Si falla, Kino mostrará lo que tenga por defecto
+    if (!res.ok) return {};
     const data = await res.json();
-    return {
-      overview: data.overview || "Sin sinopsis disponible.",
-    };
+    return { overview: data.overview || "Sin sinopsis disponible." };
   } catch (error) {
-    kino.log("Error obteniendo detalles de TMDB:", error.message);
     return {};
   }
 }
