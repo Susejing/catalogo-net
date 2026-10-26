@@ -35,44 +35,49 @@ function formatItem(item) {
   };
 }
 
+// Función auxiliar para no repetir la lógica de filtrado
+function filterCatalog(catalog, filterType) {
+  const isAnime = i => (i.genres || "").toLowerCase().includes('animación') || (i.genres || "").toLowerCase().includes('anime');
+  const isSub = i => (i.resolutions || "").toUpperCase().includes('SUB') || (i.resolutions || "").toUpperCase().includes('JPN');
+  const isLat = i => (i.resolutions || "").toUpperCase().includes('LAT') || (i.resolutions || "").toUpperCase().includes('DUAL');
+
+  switch(filterType) {
+    case "anime_sub": return catalog.filter(i => isAnime(i) && isSub(i));
+    case "anime_lat": return catalog.filter(i => isAnime(i) && isLat(i));
+    case "latino": return catalog.filter(i => isLat(i) && !isAnime(i));
+    case "subtitulado": return catalog.filter(i => isSub(i) && !isAnime(i));
+    case "movies": return catalog.filter(i => i.kind === 'movie' && !isAnime(i));
+    case "series": return catalog.filter(i => i.kind === 'series' && !isAnime(i));
+    default: return catalog;
+  }
+}
+
 // --- 🏠 FUNCIÓN DE INICIO (LAS SECCIONES) ---
 export async function home() {
   try {
     const catalog = await getCatalog();
     const rows = [];
 
-    // Filtros
-    const movies = catalog.filter(i => i.kind === 'movie');
-    const series = catalog.filter(i => i.kind === 'series');
-    
-    // Filtrar Animes (por género)
-    const animes = catalog.filter(i => (i.genres || "").toLowerCase().includes('animación') || (i.genres || "").toLowerCase().includes('anime'));
-    
-    // Filtrar Latino (por resolutions)
-    const latino = catalog.filter(i => (i.resolutions || "").toUpperCase().includes('LAT'));
-    
-    // Filtrar Subtitulado (por resolutions)
-    const sub = catalog.filter(i => (i.resolutions || "").toUpperCase().includes('SUB'));
+    // Creamos las filas. El campo "ref" es el que hace que aparezca el botón de "Ver más".
+    const configuracionFilas = [
+      { id: "anime_sub", title: "Animes Subtitulados", ref: "anime_sub" },
+      { id: "anime_lat", title: "Animes en Latino", ref: "anime_lat" },
+      { id: "latino", title: "Películas y Series en Latino", ref: "latino" },
+      { id: "subtitulado", title: "Películas y Series Subtituladas", ref: "subtitulado" },
+      { id: "movies", title: "Películas Recientes", ref: "movies" },
+      { id: "series", title: "Series Recientes", ref: "series" }
+    ];
 
-    // 1. Películas Recientes
-    if (movies.length > 0) {
-      rows.push({ id: "movies", title: "Películas Recientes", items: movies.slice(0, 20).map(formatItem) });
-    }
-    // 2. Series Recientes
-    if (series.length > 0) {
-      rows.push({ id: "series", title: "Series Recientes", items: series.slice(0, 20).map(formatItem) });
-    }
-    // 3. Animes
-    if (animes.length > 0) {
-      rows.push({ id: "animes", title: "Animes y Animación", items: animes.slice(0, 20).map(formatItem) });
-    }
-    // 4. Audio Latino
-    if (latino.length > 0) {
-      rows.push({ id: "latino", title: "Películas y Series en Latino", items: latino.slice(0, 20).map(formatItem) });
-    }
-    // 5. Subtitulado
-    if (sub.length > 0) {
-      rows.push({ id: "sub", title: "Subtitulado", items: sub.slice(0, 20).map(formatItem) });
+    for (const config of configuracionFilas) {
+      const resultados = filterCatalog(catalog, config.ref);
+      if (resultados.length > 0) {
+        rows.push({
+          id: config.id,
+          title: config.title,
+          ref: config.ref, // <-- Esto habilita el botón de "Ver más"
+          items: resultados.slice(0, 20).map(formatItem) // Mostramos solo los primeros 20 en el inicio
+        });
+      }
     }
 
     return rows;
@@ -84,23 +89,13 @@ export async function home() {
 // --- ➡️ FUNCIÓN DE VER MÁS (PAGINACIÓN) ---
 export async function browse(ref, cursor) {
   const catalog = await getCatalog();
-  const limit = 30;
+  const itemsSource = filterCatalog(catalog, ref);
   
-  // Determinamos qué lista usar según la fila de donde venimos
-  let itemsSource = [];
-  if (ref === "movies") itemsSource = catalog.filter(i => i.kind === 'movie');
-  else if (ref === "series") itemsSource = catalog.filter(i => i.kind === 'series');
-  else if (ref === "animes") itemsSource = catalog.filter(i => (i.genres || "").toLowerCase().includes('animación') || (i.genres || "").toLowerCase().includes('anime'));
-  else if (ref === "latino") itemsSource = catalog.filter(i => (i.resolutions || "").toUpperCase().includes('LAT'));
-  else if (ref === "sub") itemsSource = catalog.filter(i => (i.resolutions || "").toUpperCase().includes('SUB'));
-  else return { items: [], next: null };
-
-  // Calculamos la página actual
+  const limit = 30; // Cuántos cargar de golpe al presionar "Ver más"
   const start = cursor ? parseInt(cursor) : 0;
   const end = start + limit;
 
   const items = itemsSource.slice(start, end).map(formatItem);
-  // Si hay más títulos, devolvemos el cursor para la siguiente página
   const nextCursor = end < itemsSource.length ? end.toString() : null;
 
   return { items, next: nextCursor };
@@ -113,7 +108,7 @@ export async function search(query) {
   return catalog.filter(item => item.name && item.name.toLowerCase().includes(q)).slice(0, 50).map(formatItem);
 }
 
-// --- ▶️ FUNCIÓN DE REPRODUCCIÓN (LA QUE YA FUNCIONA) ---
+// --- ▶️ FUNCIÓN DE REPRODUCCIÓN (Ya funcionaba bien) ---
 export async function resolve(ref) {
   const parts = ref.split(':');
   const type = parts[0]; 
