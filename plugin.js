@@ -1,10 +1,9 @@
 const BASE_URL = "https://raw.githubusercontent.com/Susejing/catalogo-net/main/";
 const ADDON_BASE_URL = "https://victory-incl-elephant-diesel.trycloudflare.com";
 const YANDEX_API = "https://cloud-api.yandex.net/v1/disk/public/resources/download?public_key=";
+const TMDB_API_KEY = "TU_API_KEY_AQUI"; // <-- REEMPLAZA ESTO
 
-const ARCHIVOS = [
-  "ligero.001.json", "ligero.002.json", "ligero.003.json", "ligero.004.json", "ligero.005.json"
-];
+const ARCHIVOS = ["ligero.001.json", "ligero.002.json", "ligero.003.json", "ligero.004.json", "ligero.005.json"];
 
 let memoryCache = null;
 
@@ -35,9 +34,15 @@ function formatItem(item) {
   };
 }
 
-// Función auxiliar para no repetir la lógica de filtrado
 function filterCatalog(catalog, filterType) {
-  const isAnime = i => (i.genres || "").toLowerCase().includes('animación') || (i.genres || "").toLowerCase().includes('anime');
+  // 🌟 FILTRO DE ANIME MEJORADO: Usamos el idioma original (Japonés = ja)
+  // Si el idioma no está en el catálogo, usamos el género como respaldo.
+  const isAnime = i => {
+    if (i.original_language === 'ja') return true;
+    const g = (i.genres || "").toLowerCase();
+    return g.includes('anime');
+  };
+  
   const isSub = i => (i.resolutions || "").toUpperCase().includes('SUB') || (i.resolutions || "").toUpperCase().includes('JPN');
   const isLat = i => (i.resolutions || "").toUpperCase().includes('LAT') || (i.resolutions || "").toUpperCase().includes('DUAL');
 
@@ -52,13 +57,10 @@ function filterCatalog(catalog, filterType) {
   }
 }
 
-// --- 🏠 FUNCIÓN DE INICIO (LAS SECCIONES) ---
 export async function home() {
   try {
     const catalog = await getCatalog();
     const rows = [];
-
-    // Creamos las filas. El campo "ref" es el que hace que aparezca el botón de "Ver más".
     const configuracionFilas = [
       { id: "anime_sub", title: "Animes Subtitulados", ref: "anime_sub" },
       { id: "anime_lat", title: "Animes en Latino", ref: "anime_lat" },
@@ -74,61 +76,69 @@ export async function home() {
         rows.push({
           id: config.id,
           title: config.title,
-          ref: config.ref, // <-- Esto habilita el botón de "Ver más"
-          items: resultados.slice(0, 20).map(formatItem) // Mostramos solo los primeros 20 en el inicio
+          ref: config.ref,
+          items: resultados.slice(0, 20).map(formatItem)
         });
       }
     }
-
     return rows;
   } catch (error) {
     return [{ id: "error", title: "❌ Error al cargar: " + error.message, items: [] }];
   }
 }
 
-// --- ➡️ FUNCIÓN DE VER MÁS (PAGINACIÓN) ---
 export async function browse(ref, cursor) {
   const catalog = await getCatalog();
   const itemsSource = filterCatalog(catalog, ref);
-  
-  const limit = 30; // Cuántos cargar de golpe al presionar "Ver más"
+  const limit = 30;
   const start = cursor ? parseInt(cursor) : 0;
   const end = start + limit;
-
   const items = itemsSource.slice(start, end).map(formatItem);
   const nextCursor = end < itemsSource.length ? end.toString() : null;
-
   return { items, next: nextCursor };
 }
 
-// --- 🔍 FUNCIÓN DE BÚSQUEDA ---
 export async function search(query) {
   const catalog = await getCatalog();
   const q = query.q.toLowerCase();
   return catalog.filter(item => item.name && item.name.toLowerCase().includes(q)).slice(0, 50).map(formatItem);
 }
 
-// --- ▶️ FUNCIÓN DE REPRODUCCIÓN (Ya funcionaba bien) ---
+// --- 📝 NUEVA FUNCIÓN PARA LA SINOPSIS ---
+export async function details(ref) {
+  const parts = ref.split(':');
+  const type = parts[0]; // "movie" o "series"
+  const id = parts[1];
+
+  try {
+    const url = `https://api.themoviedb.org/3/${type}/${id}?api_key=${TMDB_API_KEY}&language=es-ES`;
+    const res = await kino.fetch(url);
+    if (!res.ok) return {}; // Si falla, Kino mostrará lo que tenga por defecto
+    const data = await res.json();
+    return {
+      overview: data.overview || "Sin sinopsis disponible.",
+    };
+  } catch (error) {
+    kino.log("Error obteniendo detalles de TMDB:", error.message);
+    return {};
+  }
+}
+
 export async function resolve(ref) {
   const parts = ref.split(':');
   const type = parts[0]; 
   const id = parts[1];
-
   try {
     const url = `${ADDON_BASE_URL}/addon/links/${type}/${id}.json`;
     const res = await kino.fetch(url);
     if (!res.ok) throw new Error(`No se encontraron enlaces (HTTP ${res.status})`);
-
     const links = await res.json();
     if (!links || links.length === 0) throw new Error("No hay enlaces de Yandex.");
-
     const firstLink = links[0];
     const yandexRes = await kino.fetch(YANDEX_API + encodeURIComponent(firstLink.share));
     if (!yandexRes.ok) throw new Error("Yandex rechazó la solicitud.");
-
     const yandexData = await yandexRes.json();
     if (!yandexData || !yandexData.href) throw new Error("No se pudo obtener el enlace directo.");
-
     return { url: yandexData.href };
   } catch (error) {
     throw new Error(error.message);
