@@ -1,7 +1,7 @@
 {
   "id": "catalogo-net",
   "name": "CATALOG//NET",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "apiVersion": 8,
   "entry": "plugin.js",
   "description": "Catálogo masivo de películas y series extraído de Movie Plus.",
@@ -15,7 +15,7 @@
     "*.yandex.ru",
     "yadi.sk"
   ],
-  "capabilities": ["home", "search", "browse", "resolve", "details"],
+  "capabilities": ["home", "search", "browse", "resolve"],
   "streamHosts": "any",
   "color": "#2C3E50",
   "icon": "icon.png",
