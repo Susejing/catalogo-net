@@ -33,12 +33,8 @@ function formatItem(item) {
 }
 
 function filterCatalog(catalog, filterType) {
-  // Un anime suele tener "JPN" en resoluciones o "animación" en el género
-  const isAnime = i => {
-    const res = (i.resolutions || "").toUpperCase();
-    const gen = (i.genres || "").toLowerCase();
-    return res.includes('JPN') || gen.includes('anime') || gen.includes('animación');
-  };
+  // Filtro estricto: Solo es anime si dice JPN (Japonés) en la resolución
+  const isAnime = i => (i.resolutions || "").toUpperCase().includes('JPN');
   
   const isSub = i => (i.resolutions || "").toUpperCase().includes('SUB') || (i.resolutions || "").toUpperCase().includes('JPN');
   const isLat = i => (i.resolutions || "").toUpperCase().includes('LAT') || (i.resolutions || "").toUpperCase().includes('DUAL');
@@ -46,10 +42,13 @@ function filterCatalog(catalog, filterType) {
   switch(filterType) {
     case "anime_sub": return catalog.filter(i => isAnime(i) && isSub(i));
     case "anime_lat": return catalog.filter(i => isAnime(i) && isLat(i));
-    case "latino": return catalog.filter(i => isLat(i) && !isAnime(i)); 
-    case "subtitulado": return catalog.filter(i => isSub(i) && !isAnime(i));
-    case "movies": return catalog.filter(i => i.kind === 'movie' && !isAnime(i));
-    case "series": return catalog.filter(i => i.kind === 'series' && !isAnime(i));
+    
+    // Las generales muestran TODO para no perder películas animadas
+    case "latino": return catalog.filter(i => isLat(i)); 
+    case "subtitulado": return catalog.filter(i => isSub(i));
+    case "movies": return catalog.filter(i => i.kind === 'movie');
+    case "series": return catalog.filter(i => i.kind === 'series');
+    
     default: return catalog;
   }
 }
@@ -103,7 +102,9 @@ export async function search(query) {
 
 export async function details(ref) {
   const apiKey = kino.settings.get("tmdb_api_key");
-  if (!apiKey) return { overview: "⚠️ Ve a los ajustes de Kino y configura tu API Key de TMDB para ver la sinopsis." };
+  if (!apiKey) {
+    return { overview: "⚠️ Configura tu API Key de TMDB en los ajustes del plugin para ver la sinopsis." };
+  }
 
   const parts = ref.split(':');
   const type = parts[0]; 
@@ -128,13 +129,17 @@ export async function resolve(ref) {
     const url = `${ADDON_BASE_URL}/addon/links/${type}/${id}.json`;
     const res = await kino.fetch(url);
     if (!res.ok) throw new Error(`No se encontraron enlaces (HTTP ${res.status})`);
+    
     const links = await res.json();
     if (!links || links.length === 0) throw new Error("No hay enlaces de Yandex.");
+    
     const firstLink = links[0];
     const yandexRes = await kino.fetch(YANDEX_API + encodeURIComponent(firstLink.share));
     if (!yandexRes.ok) throw new Error("Yandex rechazó la solicitud.");
+    
     const yandexData = await yandexRes.json();
     if (!yandexData || !yandexData.href) throw new Error("No se pudo obtener el enlace directo.");
+    
     return { url: yandexData.href };
   } catch (error) {
     throw new Error(error.message);
