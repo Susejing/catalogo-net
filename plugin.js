@@ -33,17 +33,11 @@ function formatItem(item) {
   };
 }
 
-// Filtro mejorado para no romper las listas
 function getGenre(item) {
   const g = (item.genres || "").toString().toLowerCase();
   const res = (item.resolutions || "").toString().toUpperCase();
-  
-  if (res.includes('JPN') || res.includes('JAP') || g.includes('anime')) {
-    return "anime";
-  }
-  if (g.includes('animación') || g.includes('animacion') || g.includes('kids') || g.includes('infantil')) {
-    return "caricatura";
-  }
+  if (res.includes('JPN') || res.includes('JAP') || g.includes('anime')) return "anime";
+  if (g.includes('animación') || g.includes('animacion') || g.includes('kids') || g.includes('infantil')) return "caricatura";
   return "general";
 }
 
@@ -104,7 +98,6 @@ export async function home() {
 export async function browse(ref, cursor) {
   const catalog = await getCatalog();
   let source = [];
-
   if (ref.includes("_mov")) source = catalog.filter(i => (i.kind === 'movie' || i.kind === 'film') && getGenre(i) === 'general');
   else if (ref.includes("_ser")) source = catalog.filter(i => (i.kind === 'series' || i.kind === 'tv') && getGenre(i) === 'general');
   else if (ref.startsWith("anime_")) source = catalog.filter(i => getGenre(i) === 'anime');
@@ -125,69 +118,118 @@ export async function search(query) {
   return catalog.filter(item => item.name && item.name.toLowerCase().includes(q)).slice(0, 50).map(formatItem);
 }
 
-// 🌟 SINOPSIS (Forzando la descarga desde TMDB)
+// 🌟 SINOPSIS FORZADA CON API KEY
 export async function meta(item) {
+  const apiKey = kino.settings.get("tmdb_api_key");
+  const tmdbType = item.kind === 'series' ? 'tv' : 'movie';
+  
+  // 1. Intentar con la API Key del usuario
+  if (apiKey) {
+    try {
+      const res = await kino.fetch(`https://api.themoviedb.org/3/${tmdbType}/${item.id}?api_key=${apiKey}&language=es-ES`);
+      if (res.ok) {
+        const data = await res.json();
+        return { title: item.title, poster: item.poster, overview: data.overview || "Sin sinopsis.", genres: data.genres?.map(g => g.name) || [], rating: data.vote_average || 0 };
+      }
+    } catch (e) { kino.log("Fallo API Key, intentando nativo"); }
+  }
+
+  // 2. Respaldo: Kino nativo
   try {
-    // Kino usa 'tv' para series y 'movie' para películas
-    const tmdbType = item.kind === 'series' ? 'tv' : 'movie';
     const tmdb = await kino.tmdb(item.id, tmdbType, 'es-ES');
-    
-    return {
-      title: item.title,
-      poster: item.poster,
-      overview: tmdb.overview || "Sin sinopsis disponible.",
-      genres: tmdb.genres ? tmdb.genres.map(g => g.name) : [],
-      rating: tmdb.vote_average || 0
-    };
+    return { title: item.title, poster: item.poster, overview: tmdb.overview || "Sin sinopsis disponible." };
   } catch (e) {
-    // Si TMDB falla, al menos devolvemos el título para no romper la app
-    return { title: item.title, poster: item.poster, overview: "No hay sinopsis disponible." };
+    return { title: item.title, poster: item.poster, overview: "No hay información." };
   }
 }
 
-// 📺 EPISODIOS (TMDB de respaldo para que no salga error)
+// 📺 EPISODIOS (Obligando a TMDB a dar la lista real)
 export async function episodes(ref) {
   const parts = ref.split(':');
   const id = parts[1];
+  const apiKey = kino.settings.get("tmdb_api_key");
+
   try {
-    const tmdb = await kino.tmdb(id, 'tv', 'es-ES');
-    const temporadas = tmdb.seasons || [];
-    let episodios = [];
-    for (const temp of temporadas) {
-      if (temp.season_number === 0) continue;
-      episodios.push({
-        id: `${id}:${temp.season_number}:1`,
-        title: temp.name || `Temporada ${temp.season_number}`,
-        season: temp.season_number,
-        number: 1,
-        overview: temp.overview
-      });
+    // Pedimos los detalles de la serie a TMDB
+    const url = apiKey 
+      ? `https://api.themoviedb.org/3/tv/${id}?api_key=${apiKey}&language=es-ES`
+      : `https://api.themoviedb.org/3/tv/${id}?api_key=TU_API_KEY_AQUI&language=es-ES`; // Intenta con Kino nativo si no hay key
+
+    let tmdbData;
+    if (apiKey) {
+        const res = await kino.fetch(url);
+        tmdbData = await res.json();
+    } else {
+        tmdbData = await kino.tmdb(id, 'tv', 'es-ES');
     }
-    return { episodes: episodios, next: null };
+
+    const temporadas = tmdbData.seasons || [];
+    let listaEpisodios = [];
+
+    // Por cada temporada, buscamos sus episodios
+    for (const temp of temporadas) {
+      if (temp.season_number === 0) continue; // Ignorar especiales
+      
+      let tempData;
+      if (apiKey) {
+        const tempRes = await kino.fetch(`https://api.themoviedb.org/3/tv/${id}/season/${temp.season_number}?api_key=${apiKey}&language=es-ES`);
+        tempData = await tempRes.json();
+      }
+
+      if (tempData && tempData.episodes) {
+        for (const ep of tempData.episodes) {
+          listaEpisodios.push({
+            id: `${id}:${temp.season_number}:${ep.episode_number}`, // ID que usará resolve
+            title: ep.name || `Episodio ${ep.episode_number}`,
+            season: temp.season_number,
+            number: ep.episode_number,
+            overview: ep.overview || ""
+          });
+        }
+      }
+    }
+    return { episodes: listaEpisodios, next: null };
   } catch (e) {
+    kino.log("Error cargando episodios:", e.message);
     return { episodes: [], next: null };
   }
 }
 
+// ▶️ REPRODUCCIÓN (Arreglado para Series)
 export async function resolve(ref) {
   const parts = ref.split(':');
   const type = parts[0]; 
   const id = parts[1];
+  const season = parts[2]; // Si es serie, vendrá la temporada
+  const episode = parts[3]; // Si es serie, vendrá el episodio
+
   try {
-    const url = `${ADDON_BASE_URL}/addon/links/${type}/${id}.json`;
-    const res = await kino.fetch(url);
-    if (!res.ok) throw new Error(`No se encontraron enlaces (HTTP ${res.status})`);
+    let linksUrl = `${ADDON_BASE_URL}/addon/links/${type}/${id}.json`;
     
-    const links = await res.json();
+    // Si es una serie y tenemos temporada/episodio, usamos la ruta de series (Stremio Standard)
+    if (type === 'series' && season && episode) {
+       linksUrl = `${ADDON_BASE_URL}/stream/series/${id}:${season}:${episode}.json`;
+    }
+
+    const res = await kino.fetch(linksUrl);
+    if (!res.ok) throw new Error(`No hay video para este episodio (HTTP ${res.status})`);
+    
+    const data = await res.json();
+    
+    // Dependiendo de cómo devuelva el addon los links (array o streams)
+    const links = data.streams || data.links || data;
     if (!links || links.length === 0) throw new Error("No hay enlaces de Yandex.");
-    
+
     const firstLink = links[0];
-    const yandexRes = await kino.fetch(YANDEX_API + encodeURIComponent(firstLink.share));
-    if (!yandexRes.ok) throw new Error("Yandex rechazó la solicitud.");
+    const linkUrl = firstLink.url || firstLink.share;
+
+    // Resolvemos en Yandex
+    const yandexRes = await kino.fetch(YANDEX_API + encodeURIComponent(linkUrl));
+    if (!yandexRes.ok) throw new Error("Yandex rechazó la descarga.");
     
     const yandexData = await yandexRes.json();
-    if (!yandexData || !yandexData.href) throw new Error("No se pudo obtener el enlace directo.");
-    
+    if (!yandexData || !yandexData.href) throw new Error("No se obtuvo el enlace directo.");
+
     return { url: yandexData.href };
   } catch (error) {
     throw new Error(error.message);
