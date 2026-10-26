@@ -1,8 +1,8 @@
 {
   "id": "catalogo-net",
   "name": "CATALOG//NET",
-  "version": "1.0.7",
-  "apiVersion": 8,
+  "version": "1.0.8",
+  "apiVersion": 6,
   "entry": "plugin.js",
   "description": "Catálogo masivo de películas y series extraído de Movie Plus.",
   "author": "Susejing",
@@ -21,6 +21,5 @@
   "icon": "icon.png",
   "section": {
     "label": "CATALOG//NET"
-  },
-  "categories": ["movies", "series", "anime"]
+  }
 }
