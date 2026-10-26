@@ -1,8 +1,8 @@
 {
   "id": "catalogo-net",
   "name": "CATALOG//NET",
-  "version": "1.0.8",
-  "apiVersion": 6,
+  "version": "1.1.0",
+  "apiVersion": 8,
   "entry": "plugin.js",
   "description": "Catálogo masivo de películas, series y anime. Reproducción vía Yandex.",
   "author": "Susejing",
@@ -15,7 +15,7 @@
     "*.yandex.ru",
     "yadi.sk"
   ],
-  "capabilities": ["home", "search", "browse", "resolve", "meta"],
+  "capabilities": ["home", "search", "browse", "resolve", "episodes", "details"],
   "streamHosts": "any",
   "color": "#2C3E50",
   "icon": "icon.png",
