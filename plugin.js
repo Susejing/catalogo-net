@@ -21,12 +21,6 @@ async function getCatalog() {
   return memoryCache;
 }
 
-// Función para verificar si es anime (ID de género 16 en TMDB o texto "anime")
-function isAnime(item) {
-  const genresStr = (item.genres || "").toString().toLowerCase();
-  return genresStr.includes('16') || genresStr.includes('anime') || genresStr.includes('animación');
-}
-
 function formatItem(item) {
   const realId = item.id ? item.id.toString() : item.row.toString(); 
   return {
@@ -34,53 +28,62 @@ function formatItem(item) {
     title: item.name || "Sin título",
     poster: item.image_path ? `https://image.tmdb.org/t/p/w500${item.image_path}` : "",
     kind: item.kind || "movie",
-    ref: `${item.kind || "movie"}:${realId}`
+    ref: `${item.kind || "movie"}:${realId}`,
+    ids: { tmdb: realId } // Necesario para que meta() obtenga la sinopsis
   };
 }
 
-// --- 📑 FUNCIÓN DE PESTAÑAS (Como YojaTV) ---
-export async function categories() {
-  return [
-    { id: "movies", name: "Películas", ref: "movies" },
-    { id: "series", name: "Series", ref: "series" },
-    { id: "anime", name: "Anime", ref: "anime" }
+// --- 📑 PESTAÑAS (Películas, Series, Anime) ---
+export async function section({ tab }) {
+  const tabs = [
+    { id: "movies", label: "Películas" },
+    { id: "series", label: "Series" },
+    { id: "anime", label: "Anime" }
   ];
+  const chosen = tabs.some(t => t.id === tab) ? tab : "movies";
+  return {
+    tabs,
+    tab: chosen,
+    rows: await getRowsForTab(chosen)
+  };
 }
 
-// --- 🏠 FUNCIÓN DE INICIO (Filas por categoría) ---
-export async function home() {
-  try {
-    const catalog = await getCatalog();
-    const rows = [];
+async function getRowsForTab(tabId) {
+  const catalog = await getCatalog();
+  const rows = [];
 
-    // Fila de Tendencias (Mezcla general)
-    rows.push({ id: "trending", title: "🔥 Tendencias de la semana", items: catalog.slice(0, 20).map(formatItem) });
-
-    // Filas generales (NO excluyen nada para no perder títulos)
+  if (tabId === "movies") {
     const movies = catalog.filter(i => i.kind === 'movie');
+    rows.push({ id: "movies_row", title: "Películas Recientes", items: movies.slice(0, 20).map(formatItem) });
+  } else if (tabId === "series") {
     const series = catalog.filter(i => i.kind === 'series');
-    
-    if (movies.length > 0) rows.push({ id: "movies_row", title: "🎬 Películas", items: movies.slice(0, 20).map(formatItem) });
-    if (series.length > 0) rows.push({ id: "series_row", title: "📺 Series", items: series.slice(0, 20).map(formatItem) });
-
-    // Filas específicas de Anime (Usando el filtro mejorado)
-    const animes = catalog.filter(i => isAnime(i));
-    if (animes.length > 0) rows.push({ id: "anime_row", title: "🌸 Anime", items: animes.slice(0, 20).map(formatItem) });
-
-    return rows;
-  } catch (error) {
-    return [{ id: "error", title: "❌ Error: " + error.message, items: [] }];
+    rows.push({ id: "series_row", title: "Series Recientes", items: series.slice(0, 20).map(formatItem) });
+  } else if (tabId === "anime") {
+    // Filtro de anime usando el ID de género 16 de TMDB o texto "anime"
+    const animes = catalog.filter(i => {
+      const g = (i.genres || "").toString().toLowerCase();
+      return g.includes('16') || g.includes('anime') || g.includes('animación');
+    });
+    rows.push({ id: "anime_row", title: "Anime", items: animes.slice(0, 20).map(formatItem) });
   }
+  return rows;
 }
 
-// --- ➡️ FUNCIÓN "VER MÁS" (Paginación por categoría) ---
+// --- 🏠 FUNCIÓN HOME (Se usa como respaldo si la sección no está activa) ---
+export async function home() {
+  return await getRowsForTab("movies");
+}
+
+// --- ➡️ BROWSE (Para las pestañas y "Ver más") ---
 export async function browse(ref, cursor) {
   const catalog = await getCatalog();
   let itemsSource = [];
-  
   if (ref === "movies") itemsSource = catalog.filter(i => i.kind === 'movie');
   else if (ref === "series") itemsSource = catalog.filter(i => i.kind === 'series');
-  else if (ref === "anime") itemsSource = catalog.filter(i => isAnime(i));
+  else if (ref === "anime") itemsSource = catalog.filter(i => {
+    const g = (i.genres || "").toString().toLowerCase();
+    return g.includes('16') || g.includes('anime') || g.includes('animación');
+  });
   else itemsSource = catalog;
 
   const limit = 30;
@@ -97,11 +100,9 @@ export async function search(query) {
   return catalog.filter(item => item.name && item.name.toLowerCase().includes(q)).slice(0, 50).map(formatItem);
 }
 
-// --- 📝 SINOPSIS (Usando kino.tmdb nativo) ---
+// --- 📝 SINOPSIS (Usando meta y el token TMDB de Kino) ---
 export async function meta(item) {
-  // Kino tiene un token interno de TMDB, no necesitas API Key manual
   if (!item.ids || !item.ids.tmdb) return {};
-  
   try {
     const tmdb = await kino.tmdb(item.ids.tmdb, item.kind, 'es-ES');
     return {
@@ -113,6 +114,7 @@ export async function meta(item) {
   }
 }
 
+// --- ▶️ REPRODUCCIÓN (Yandex) ---
 export async function resolve(ref) {
   const parts = ref.split(':');
   const type = parts[0]; 
