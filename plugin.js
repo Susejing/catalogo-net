@@ -33,15 +33,20 @@ function formatItem(item) {
   };
 }
 
-// Filtro de anime: busca "anime" en el nombre, géneros o resolución
-function isAnime(item) {
-  const nombre = (item.name || "").toLowerCase();
-  const generos = (item.genres || "").toLowerCase();
-  const resolucion = (item.resolutions || "").toUpperCase();
-  return nombre.includes('anime') || generos.includes('anime') || resolucion.includes('JPN') || resolucion.includes('JAP');
+// Filtro mejorado para no romper las listas
+function getGenre(item) {
+  const g = (item.genres || "").toString().toLowerCase();
+  const res = (item.resolutions || "").toString().toUpperCase();
+  
+  if (res.includes('JPN') || res.includes('JAP') || g.includes('anime')) {
+    return "anime";
+  }
+  if (g.includes('animación') || g.includes('animacion') || g.includes('kids') || g.includes('infantil')) {
+    return "caricatura";
+  }
+  return "general";
 }
 
-// --- PESTAÑAS ---
 export async function section({ tab }) {
   const tabs = [
     { id: "movies", label: "Películas" },
@@ -58,30 +63,35 @@ async function getRowsForTab(tabId) {
   const rows = [];
 
   if (tabId === "movies") {
-    const movies = catalog.filter(i => (i.kind === 'movie' || i.kind === 'film') && !isAnime(i));
+    const movies = catalog.filter(i => (i.kind === 'movie' || i.kind === 'film') && getGenre(i) === 'general');
     if (movies.length > 0) {
       rows.push({ id: "trend_mov", title: "🔥 Tendencias", ref: "trend_mov", items: movies.slice(0, 20).map(formatItem) });
-      rows.push({ id: "pop_mov", title: "⭐ Populares", ref: "pop_mov", items: movies.slice(20, 40).map(formatItem) });
+      rows.push({ id: "cart_mov", title: "🎬 En cartelera", ref: "cart_mov", items: movies.slice(20, 40).map(formatItem) });
+      rows.push({ id: "pop_mov", title: "⭐ Populares", ref: "pop_mov", items: movies.slice(40, 60).map(formatItem) });
+      rows.push({ id: "action_mov", title: "💥 Acción y Aventura", ref: "action_mov", items: movies.slice(60, 80).map(formatItem) });
     }
   } 
   else if (tabId === "series") {
-    const series = catalog.filter(i => (i.kind === 'series' || i.kind === 'tv') && !isAnime(i));
+    const series = catalog.filter(i => (i.kind === 'series' || i.kind === 'tv') && getGenre(i) === 'general');
     if (series.length > 0) {
       rows.push({ id: "pop_ser", title: "📺 Series Populares", ref: "pop_ser", items: series.slice(0, 20).map(formatItem) });
       rows.push({ id: "new_ser", title: "✨ Estrenos", ref: "new_ser", items: series.slice(20, 40).map(formatItem) });
+      rows.push({ id: "drama_ser", title: "🎭 Drama y Misterio", ref: "drama_ser", items: series.slice(40, 60).map(formatItem) });
     }
   } 
   else if (tabId === "anime") {
-    const anime = catalog.filter(i => isAnime(i));
+    const anime = catalog.filter(i => getGenre(i) === 'anime');
     if (anime.length > 0) {
       rows.push({ id: "anime_top", title: "🌸 Anime Destacado", ref: "anime_top", items: anime.slice(0, 20).map(formatItem) });
-      rows.push({ id: "anime_all", title: "📚 Todo el Anime", ref: "anime_all", items: anime.slice(20, 40).map(formatItem) });
+      rows.push({ id: "anime_sub", title: "🇯🇵 Anime Subtitulado", ref: "anime_sub", items: anime.slice(20, 40).map(formatItem) });
+      rows.push({ id: "anime_lat", title: "🇲🇽 Anime en Latino", ref: "anime_lat", items: anime.slice(40, 60).map(formatItem) });
     }
   }
   else if (tabId === "cartoons") {
-    const cartoons = catalog.filter(i => (i.kind === 'movie' || i.kind === 'series' || i.kind === 'tv') && !isAnime(i) && (i.genres || "").toLowerCase().includes('animación'));
+    const cartoons = catalog.filter(i => getGenre(i) === 'caricatura');
     if (cartoons.length > 0) {
-      rows.push({ id: "cartoon_pop", title: "🧸 Caricaturas", ref: "cartoon_pop", items: cartoons.slice(0, 20).map(formatItem) });
+      rows.push({ id: "cartoon_pop", title: "🧸 Caricaturas Populares", ref: "cartoon_pop", items: cartoons.slice(0, 20).map(formatItem) });
+      rows.push({ id: "cartoon_kids", title: "👶 Para los más pequeños", ref: "cartoon_kids", items: cartoons.slice(20, 40).map(formatItem) });
     }
   }
   return rows;
@@ -91,15 +101,14 @@ export async function home() {
   return await getRowsForTab("movies");
 }
 
-// --- PAGINACIÓN CORREGIDA ---
 export async function browse(ref, cursor) {
   const catalog = await getCatalog();
   let source = [];
 
-  if (ref.includes("_mov")) source = catalog.filter(i => (i.kind === 'movie' || i.kind === 'film') && !isAnime(i));
-  else if (ref.includes("_ser")) source = catalog.filter(i => (i.kind === 'series' || i.kind === 'tv') && !isAnime(i));
-  else if (ref.includes("_anime")) source = catalog.filter(i => isAnime(i));
-  else if (ref.includes("_cartoon")) source = catalog.filter(i => (i.kind === 'movie' || i.kind === 'series' || i.kind === 'tv') && !isAnime(i) && (i.genres || "").toLowerCase().includes('animación'));
+  if (ref.includes("_mov")) source = catalog.filter(i => (i.kind === 'movie' || i.kind === 'film') && getGenre(i) === 'general');
+  else if (ref.includes("_ser")) source = catalog.filter(i => (i.kind === 'series' || i.kind === 'tv') && getGenre(i) === 'general');
+  else if (ref.startsWith("anime_")) source = catalog.filter(i => getGenre(i) === 'anime');
+  else if (ref.startsWith("cartoon_")) source = catalog.filter(i => getGenre(i) === 'caricatura');
   else source = catalog;
 
   const limit = 30;
@@ -116,11 +125,13 @@ export async function search(query) {
   return catalog.filter(item => item.name && item.name.toLowerCase().includes(q)).slice(0, 50).map(formatItem);
 }
 
-// --- SINOPSIS CORREGIDA ---
+// 🌟 SINOPSIS (Forzando la descarga desde TMDB)
 export async function meta(item) {
   try {
+    // Kino usa 'tv' para series y 'movie' para películas
     const tmdbType = item.kind === 'series' ? 'tv' : 'movie';
     const tmdb = await kino.tmdb(item.id, tmdbType, 'es-ES');
+    
     return {
       title: item.title,
       poster: item.poster,
@@ -129,36 +140,15 @@ export async function meta(item) {
       rating: tmdb.vote_average || 0
     };
   } catch (e) {
-    return { title: item.title, poster: item.poster, overview: "Sin información." };
+    // Si TMDB falla, al menos devolvemos el título para no romper la app
+    return { title: item.title, poster: item.poster, overview: "No hay sinopsis disponible." };
   }
 }
 
-// --- EPISODIOS (Intenta MoviePlus, respaldo TMDB) ---
+// 📺 EPISODIOS (TMDB de respaldo para que no salga error)
 export async function episodes(ref) {
   const parts = ref.split(':');
   const id = parts[1];
-  
-  // 1. Intentar con MoviePlus (probando un endpoint común)
-  try {
-    const res = await kino.fetch(`${ADDON_BASE_URL}/addon/episodes/series/${id}.json`);
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        return {
-          episodes: data.map(ep => ({
-            id: `${id}:${ep.season || 1}:${ep.episode || 1}`,
-            title: ep.title || `Episodio ${ep.episode || 1}`,
-            season: ep.season || 1,
-            number: ep.episode || 1,
-            overview: ep.overview || ""
-          })),
-          next: null
-        };
-      }
-    }
-  } catch (e) { kino.log("MoviePlus no tiene episodios, usando TMDB"); }
-
-  // 2. Respaldo: TMDB
   try {
     const tmdb = await kino.tmdb(id, 'tv', 'es-ES');
     const temporadas = tmdb.seasons || [];
@@ -179,27 +169,12 @@ export async function episodes(ref) {
   }
 }
 
-// --- REPRODUCCIÓN CORREGIDA (Películas y Series) ---
 export async function resolve(ref) {
   const parts = ref.split(':');
   const type = parts[0]; 
   const id = parts[1];
-  let season = null;
-  let episode = null;
-
-  // Si es serie, el ref puede venir como "series:id:season:episode"
-  if (type === 'series' && parts.length >= 4) {
-    season = parts[2];
-    episode = parts[3];
-  }
-
   try {
-    // Construir la URL de links
-    let url = `${ADDON_BASE_URL}/addon/links/${type}/${id}.json`;
-    if (season && episode) {
-      url = `${ADDON_BASE_URL}/addon/links/${type}/${id}/${season}/${episode}.json`;
-    }
-
+    const url = `${ADDON_BASE_URL}/addon/links/${type}/${id}.json`;
     const res = await kino.fetch(url);
     if (!res.ok) throw new Error(`No se encontraron enlaces (HTTP ${res.status})`);
     
