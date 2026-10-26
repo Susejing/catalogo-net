@@ -21,7 +21,6 @@ async function getCatalog() {
   return memoryCache;
 }
 
-// Formateo de items
 function formatItem(item) {
   const realId = item.id ? item.id.toString() : item.row.toString(); 
   const k = item.kind === 'tv' ? 'series' : (item.kind || "movie");
@@ -34,20 +33,22 @@ function formatItem(item) {
   };
 }
 
-// Clasificador
+// 🌟 FILTRO ESTRICTO DE ANIME Y CARICATURAS
 function getGenre(item) {
   const g = (item.genres || "").toString().toLowerCase();
-  const isAnim = g.includes('16') || g.includes('anime') || g.includes('animación');
+  const res = (item.resolutions || "").toString().toUpperCase();
   
-  if (isAnim) {
-    // Si es infantil o dibujo occidental
-    if (g.includes('10762') || g.includes('kids') || g.includes('infantil') || g.includes('familia')) return "caricatura";
+  // Solo es Anime si dice JPN/JAP o si los géneros dicen "anime"
+  if (res.includes('JPN') || res.includes('JAP') || g.includes('anime')) {
     return "anime";
+  }
+  // Es caricatura si es animación pero no cayó en la categoría de arriba
+  if (g.includes('16') || g.includes('animación') || g.includes('animacion') || g.includes('kids') || g.includes('infantil')) {
+    return "caricatura";
   }
   return "general";
 }
 
-// --- 📑 PESTAÑAS (Ahora incluye Caricaturas) ---
 export async function section({ tab }) {
   const tabs = [
     { id: "movies", label: "Películas" },
@@ -59,20 +60,17 @@ export async function section({ tab }) {
   return { tabs, tab: chosen, rows: await getRowsForTab(chosen) };
 }
 
-// --- 🏠 GENERADOR DE FILAS (Llenamos el inicio) ---
 async function getRowsForTab(tabId) {
   const catalog = await getCatalog();
   const rows = [];
 
   if (tabId === "movies") {
     const movies = catalog.filter(i => (i.kind === 'movie' || i.kind === 'film') && getGenre(i) === 'general');
-    // Creamos varias filas usando distintos cortes del catálogo
     if (movies.length > 0) {
-      rows.push({ id: "trend_mov", title: "🔥 Tendencias de la semana", ref: "trend_mov", items: movies.slice(0, 20).map(formatItem) });
+      rows.push({ id: "trend_mov", title: "🔥 Tendencias", ref: "trend_mov", items: movies.slice(0, 20).map(formatItem) });
       rows.push({ id: "cart_mov", title: "🎬 En cartelera", ref: "cart_mov", items: movies.slice(20, 40).map(formatItem) });
       rows.push({ id: "pop_mov", title: "⭐ Populares", ref: "pop_mov", items: movies.slice(40, 60).map(formatItem) });
-      rows.push({ id: "top_mov", title: "🏆 Mejor valoradas", ref: "top_mov", items: movies.slice(60, 80).map(formatItem) });
-      rows.push({ id: "action_mov", title: "💥 Acción y Aventura", ref: "action_mov", items: movies.slice(80, 100).map(formatItem) });
+      rows.push({ id: "action_mov", title: "💥 Acción y Aventura", ref: "action_mov", items: movies.slice(60, 80).map(formatItem) });
     }
   } 
   else if (tabId === "series") {
@@ -81,8 +79,6 @@ async function getRowsForTab(tabId) {
       rows.push({ id: "pop_ser", title: "📺 Series Populares", ref: "pop_ser", items: series.slice(0, 20).map(formatItem) });
       rows.push({ id: "new_ser", title: "✨ Estrenos", ref: "new_ser", items: series.slice(20, 40).map(formatItem) });
       rows.push({ id: "drama_ser", title: "🎭 Drama y Misterio", ref: "drama_ser", items: series.slice(40, 60).map(formatItem) });
-    } else {
-      rows.push({ id: "no_series", title: "No hay series disponibles", items: [] });
     }
   } 
   else if (tabId === "anime") {
@@ -91,6 +87,8 @@ async function getRowsForTab(tabId) {
       rows.push({ id: "anime_top", title: "🌸 Anime Destacado", ref: "anime_top", items: anime.slice(0, 20).map(formatItem) });
       rows.push({ id: "anime_sub", title: "🇯🇵 Anime Subtitulado", ref: "anime_sub", items: anime.slice(20, 40).map(formatItem) });
       rows.push({ id: "anime_lat", title: "🇲🇽 Anime en Latino", ref: "anime_lat", items: anime.slice(40, 60).map(formatItem) });
+    } else {
+      rows.push({ id: "no_anime", title: "No se encontró Anime en este catálogo", items: [] });
     }
   }
   else if (tabId === "cartoons") {
@@ -107,22 +105,15 @@ export async function home() {
   return await getRowsForTab("movies");
 }
 
-// --- ➡️ "VER MÁS" ---
 export async function browse(ref, cursor) {
   const catalog = await getCatalog();
   let source = [];
 
-  if (ref.startsWith("trend_mov") || ref.startsWith("cart_mov") || ref.startsWith("pop_mov") || ref.startsWith("top_mov") || ref.startsWith("action_mov")) {
-    source = catalog.filter(i => (i.kind === 'movie' || i.kind === 'film') && getGenre(i) === 'general');
-  } else if (ref.startsWith("pop_ser") || ref.startsWith("new_ser") || ref.startsWith("drama_ser")) {
-    source = catalog.filter(i => (i.kind === 'series' || i.kind === 'tv') && getGenre(i) === 'general');
-  } else if (ref.startsWith("anime_top") || ref.startsWith("anime_sub") || ref.startsWith("anime_lat")) {
-    source = catalog.filter(i => getGenre(i) === 'anime');
-  } else if (ref.startsWith("cartoon_pop") || ref.startsWith("cartoon_kids")) {
-    source = catalog.filter(i => getGenre(i) === 'caricatura');
-  } else {
-    source = catalog;
-  }
+  if (ref.includes("_mov")) source = catalog.filter(i => (i.kind === 'movie' || i.kind === 'film') && getGenre(i) === 'general');
+  else if (ref.includes("_ser")) source = catalog.filter(i => (i.kind === 'series' || i.kind === 'tv') && getGenre(i) === 'general');
+  else if (ref.startsWith("anime_")) source = catalog.filter(i => getGenre(i) === 'anime');
+  else if (ref.startsWith("cartoon_")) source = catalog.filter(i => getGenre(i) === 'caricatura');
+  else source = catalog;
 
   const limit = 30;
   const start = cursor ? parseInt(cursor) : 0;
@@ -132,18 +123,22 @@ export async function browse(ref, cursor) {
   return { items, next: nextCursor };
 }
 
-// --- 🔍 BÚSQUEDA ---
+// 🔍 BÚSQUEDA MEJORADA
 export async function search(query) {
   const catalog = await getCatalog();
   const q = query.q.toLowerCase();
-  return catalog.filter(item => item.name && item.name.toLowerCase().includes(q)).slice(0, 50).map(formatItem);
+  return catalog.filter(item => 
+    item.name && item.name.toLowerCase().includes(q)
+  ).slice(0, 50).map(formatItem);
 }
 
-// --- 📝 SINOPSIS (Ahora sí, llamando a TMDB) ---
+// 📝 SINOPSIS CORREGIDA (Mapeo de 'series' a 'tv' para TMDB)
 export async function meta(item) {
   try {
-    // Kino tiene un token nativo de TMDB, esto buscará la sinopsis en español
-    const tmdb = await kino.tmdb(item.id, item.kind, 'es-ES');
+    // Kino necesita que le digamos 'tv' si es una serie, no 'series'
+    const tmdbType = item.kind === 'series' ? 'tv' : 'movie';
+    const tmdb = await kino.tmdb(item.id, tmdbType, 'es-ES');
+    
     return {
       title: item.title,
       poster: item.poster,
@@ -153,16 +148,16 @@ export async function meta(item) {
     };
   } catch (e) {
     kino.log("Error obteniendo sinopsis:", e.message);
-    return { title: item.title, poster: item.poster, overview: "No se pudo cargar la sinopsis." };
+    return { title: item.title, poster: item.poster, overview: "Sin información." };
   }
 }
 
-// --- 📺 EPISODIOS ---
+// 📺 EPISODIOS (Ajustado a TMDB)
 export async function episodes(ref) {
   const parts = ref.split(':');
   const id = parts[1];
   try {
-    const tmdb = await kino.tmdb(id, 'series', 'es-ES');
+    const tmdb = await kino.tmdb(id, 'tv', 'es-ES'); // 'tv' es el tipo correcto
     const temporadas = tmdb.seasons || [];
     let episodios = [];
     
@@ -182,7 +177,6 @@ export async function episodes(ref) {
   }
 }
 
-// --- ▶️ REPRODUCCIÓN ---
 export async function resolve(ref) {
   const parts = ref.split(':');
   const type = parts[0]; 
