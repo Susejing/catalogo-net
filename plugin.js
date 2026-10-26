@@ -29,11 +29,17 @@ function formatItem(item) {
     poster: item.image_path ? `https://image.tmdb.org/t/p/w500${item.image_path}` : "",
     kind: item.kind || "movie",
     ref: `${item.kind || "movie"}:${realId}`,
-    ids: { tmdb: realId } // Necesario para que meta() obtenga la sinopsis
+    ids: { tmdb: realId } // Necesario para que Kino busque la sinopsis
   };
 }
 
-// --- 📑 PESTAÑAS (Películas, Series, Anime) ---
+// Verifica si es anime (ID de género 16 de TMDB o texto "anime")
+function isAnime(item) {
+  const g = (item.genres || "").toString().toLowerCase();
+  return g.includes('16') || g.includes('anime') || g.includes('animación');
+}
+
+// --- 📑 FUNCIÓN DE PESTAÑAS ---
 export async function section({ tab }) {
   const tabs = [
     { id: "movies", label: "Películas" },
@@ -41,6 +47,7 @@ export async function section({ tab }) {
     { id: "anime", label: "Anime" }
   ];
   const chosen = tabs.some(t => t.id === tab) ? tab : "movies";
+  
   return {
     tabs,
     tab: chosen,
@@ -48,68 +55,89 @@ export async function section({ tab }) {
   };
 }
 
+// --- 🏠 GENERADOR DE FILAS POR PESTAÑA ---
 async function getRowsForTab(tabId) {
   const catalog = await getCatalog();
   const rows = [];
 
   if (tabId === "movies") {
     const movies = catalog.filter(i => i.kind === 'movie');
-    rows.push({ id: "movies_row", title: "Películas Recientes", items: movies.slice(0, 20).map(formatItem) });
-  } else if (tabId === "series") {
+    // Simulamos diferentes categorías con los mismos datos
+    rows.push({ id: "trending_movies", title: "🔥 Tendencias de la semana", ref: "trending_movies", items: movies.slice(0, 20).map(formatItem) });
+    rows.push({ id: "cartelera_movies", title: "🎬 En cartelera", ref: "cartelera_movies", items: movies.slice(20, 40).map(formatItem) });
+    rows.push({ id: "populares_movies", title: "⭐ Populares", ref: "populares_movies", items: movies.slice(40, 60).map(formatItem) });
+  } 
+  else if (tabId === "series") {
     const series = catalog.filter(i => i.kind === 'series');
-    rows.push({ id: "series_row", title: "Series Recientes", items: series.slice(0, 20).map(formatItem) });
-  } else if (tabId === "anime") {
-    // Filtro de anime usando el ID de género 16 de TMDB o texto "anime"
-    const animes = catalog.filter(i => {
-      const g = (i.genres || "").toString().toLowerCase();
-      return g.includes('16') || g.includes('anime') || g.includes('animación');
-    });
-    rows.push({ id: "anime_row", title: "Anime", items: animes.slice(0, 20).map(formatItem) });
+    rows.push({ id: "populares_series", title: "📺 Series Populares", ref: "populares_series", items: series.slice(0, 20).map(formatItem) });
+    rows.push({ id: "nuevas_series", title: "✨ Nuevas Series", ref: "nuevas_series", items: series.slice(20, 40).map(formatItem) });
+  } 
+  else if (tabId === "anime") {
+    const animes = catalog.filter(i => isAnime(i));
+    rows.push({ id: "anime_top", title: "🌸 Anime Destacado", ref: "anime_top", items: animes.slice(0, 20).map(formatItem) });
+    rows.push({ id: "anime_lat", title: "🇲🇽 Anime en Latino", ref: "anime_lat", items: animes.filter(i => (i.resolutions || "").toUpperCase().includes('LAT')).slice(0, 20).map(formatItem) });
+    rows.push({ id: "anime_sub", title: "🇯🇵 Anime Subtitulado", ref: "anime_sub", items: animes.filter(i => (i.resolutions || "").toUpperCase().includes('SUB') || (i.resolutions || "").toUpperCase().includes('JPN')).slice(0, 20).map(formatItem) });
   }
   return rows;
 }
 
-// --- 🏠 FUNCIÓN HOME (Se usa como respaldo si la sección no está activa) ---
+// --- 🏠 FUNCIÓN HOME (Respaldo) ---
 export async function home() {
   return await getRowsForTab("movies");
 }
 
-// --- ➡️ BROWSE (Para las pestañas y "Ver más") ---
+// --- ➡️ BROWSE (Paginación para "Ver Más") ---
 export async function browse(ref, cursor) {
   const catalog = await getCatalog();
-  let itemsSource = [];
-  if (ref === "movies") itemsSource = catalog.filter(i => i.kind === 'movie');
-  else if (ref === "series") itemsSource = catalog.filter(i => i.kind === 'series');
-  else if (ref === "anime") itemsSource = catalog.filter(i => {
-    const g = (i.genres || "").toString().toLowerCase();
-    return g.includes('16') || g.includes('anime') || g.includes('animación');
-  });
-  else itemsSource = catalog;
+  let source = [];
 
+  // Determinamos qué lista usar según el ref de la fila
+  if (ref === "trending_movies" || ref === "cartelera_movies" || ref === "populares_movies") {
+    source = catalog.filter(i => i.kind === 'movie');
+  } else if (ref === "populares_series" || ref === "nuevas_series") {
+    source = catalog.filter(i => i.kind === 'series');
+  } else if (ref === "anime_top") {
+    source = catalog.filter(i => isAnime(i));
+  } else if (ref === "anime_lat") {
+    source = catalog.filter(i => isAnime(i) && (i.resolutions || "").toUpperCase().includes('LAT'));
+  } else if (ref === "anime_sub") {
+    source = catalog.filter(i => isAnime(i) && ((i.resolutions || "").toUpperCase().includes('SUB') || (i.resolutions || "").toUpperCase().includes('JPN')));
+  } else {
+    source = catalog; // Fallback
+  }
+
+  // Kino pasa el cursor como un número de página o offset
   const limit = 30;
   const start = cursor ? parseInt(cursor) : 0;
   const end = start + limit;
-  const items = itemsSource.slice(start, end).map(formatItem);
-  const nextCursor = end < itemsSource.length ? end.toString() : null;
+
+  const items = source.slice(start, end).map(formatItem);
+  const nextCursor = end < source.length ? end.toString() : null;
+
   return { items, next: nextCursor };
 }
 
+// --- 🔍 BÚSQUEDA ---
 export async function search(query) {
   const catalog = await getCatalog();
   const q = query.q.toLowerCase();
   return catalog.filter(item => item.name && item.name.toLowerCase().includes(q)).slice(0, 50).map(formatItem);
 }
 
-// --- 📝 SINOPSIS (Usando meta y el token TMDB de Kino) ---
+// --- 📝 SINOPSIS NATIVA (Sin API Key) ---
 export async function meta(item) {
+  // Kino obtiene la sinopsis directamente usando su token interno
   if (!item.ids || !item.ids.tmdb) return {};
+  
   try {
+    // Obtenemos los detalles de TMDB en español
     const tmdb = await kino.tmdb(item.ids.tmdb, item.kind, 'es-ES');
     return {
       overview: tmdb.overview || "Sin sinopsis disponible.",
-      genres: tmdb.genres?.map(g => g.name) || []
+      genres: tmdb.genres ? tmdb.genres.map(g => g.name) : []
     };
   } catch (e) {
+    kino.log("Error obteniendo sinopsis:", e.message);
     return {};
   }
 }
